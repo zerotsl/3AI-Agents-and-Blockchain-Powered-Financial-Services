@@ -1,34 +1,69 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "agent-guard"
-version = "0.1.0"
-description = "AI 代理受托资金的支出约束原型：额度校验、越界拦截、审计台账"
+# 发行名（PyPI 上的名字）与导入名（import 时写的名字）刻意不同：
+#
+#   PyPI 上的 `agent-guard` 已被另一个无关项目占用，而且它用的 import 名
+#   也是 `agent_guard` —— 同名会直接冲突。所以这里发行名改用
+#   `agent-spend-guard`，导入名保持 `agent_guard`（与本仓库代码一致，
+#   不需要重命名任何模块）。
+name = "agent-spend-guard"
+version = "0.2.0"
+description = "AI 代理受托资金原型：把'谁授权了这笔支出、依据什么条件'变成可强制、可追溯、可停止的记录"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-keywords = ["ai-agent", "spending-limit", "policy-engine", "fintech", "prototype"]
+authors = [{ name = "zerotsl" }]
+keywords = [
+  "ai-agent",
+  "agentic-payments",
+  "spending-limit",
+  "policy-engine",
+  "spend-mandate",
+  "audit",
+  "fintech",
+  "prototype",
+]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Intended Audience :: Developers",
   "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Topic :: Office/Business :: Financial",
+  "Topic :: Security",
+  "Typing :: Typed",
 ]
 
-# 运行期零第三方依赖：原型阶段刻意保持"拷走就能跑"
+# 运行期零第三方依赖：原型阶段刻意保持"装完就能跑"
 dependencies = []
 
 [project.optional-dependencies]
-dev = ["pytest>=7.4"]
+dev = ["pytest>=7.4", "build>=1.0", "twine>=5.0"]
+
+[project.urls]
+Homepage = "https://github.com/zerotsl/3AI-Agents-and-Blockchain-Powered-Financial-Services"
+Source = "https://github.com/zerotsl/3AI-Agents-and-Blockchain-Powered-Financial-Services"
+Issues = "https://github.com/zerotsl/3AI-Agents-and-Blockchain-Powered-Financial-Services/issues"
 
 [project.scripts]
+# 两个命令行入口
 agent-guard = "agent_guard.cli:main"
+agent-guard-export = "agent_guard.export:main"
 
 [tool.setuptools]
+# 只打这一个包。项目根目录的 export.py 是**转发壳**，不进 wheel ——
+# 真正的实现在 agent_guard/export.py 里，随包一起走。
 packages = ["agent_guard"]
+
+[tool.setuptools.package-data]
+agent_guard = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

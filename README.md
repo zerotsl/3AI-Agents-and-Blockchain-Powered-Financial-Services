@@ -94,22 +94,172 @@
 
 要求 **Python ≥ 3.10**，运行期**零第三方依赖**。
 
+### 安装
+
 ```bash
-# 跑演示：不接 Kiln 也能跑通全链路（用回放传输）
+pip install agent-spend-guard        # 从 PyPI（发布后）
+# 或者用离线包
+pip install dist/agent_spend_guard-0.2.0-py3-none-any.whl
+```
+
+装好后有两个命令：
+
+```bash
+agent-guard --help                   # 主入口
+agent-guard-export --list            # 导出工具
+```
+
+> **发行名与导入名不同**，这不是笔误：PyPI 上的 `agent-guard` 已被另一个无关项目占用，且它用的 import 名也是 `agent_guard`。所以发行名用 `agent-spend-guard`，导入名保持 `agent_guard`。详见 [docs/PUBLISH.md](E:\代号3\docs\PUBLISH.md)。
+
+### 从源码跑（不安装）
+
+```bash
+# ① 导出网页控制台（推荐先跑这个）—— 单文件 HTML，双击就能开
+python -m agent_guard.cli web --out out/console.html
+
+# ② 起一个本地实时服务（可选，默认只绑 127.0.0.1:8787）
+python -m agent_guard.cli serve
+
+# ③ 终端版全链路演示
 python -m agent_guard.cli demo
 
-# 追溯报告
-python -m agent_guard.cli report
-
-# 校验策略
+# ④ 追溯报告 / 校验
+python -m agent_guard.cli report --chain out/chain.json
 python -m agent_guard.cli validate --policy data/policy.example.json
 
-# 探测 Kiln 是否在线
+# ⑤ 探测 Kiln 是否在线
 python -m agent_guard.cli kiln-health --base-url http://<板子IP>:8080/v1
 
-# 测试
+# ⑥ 测试
 python -m pytest
 ```
+
+---
+
+## 下载：一个自包含的模块
+
+**下载功能在 [`agent_guard/export.py`](E:\代号3\agent_guard\export.py)。**
+
+它**不 import 本仓库的任何其他模块**，只依赖 Python 标准库——所以可以被单独拷走：
+
+```bash
+# 从仓库根目录（转发壳）
+python export.py --demo --format all --out-dir out
+
+# 装好包之后
+agent-guard-export --demo --format all --out-dir out
+
+# 想要真正单文件？直接拷实现本身
+cp agent_guard/export.py /somewhere/export.py
+python /somewhere/export.py --demo --format all --out-dir out
+```
+
+> **实现为什么在包里而不是根目录**：根目录的文件**不进 wheel**。原先实现在根目录时，`pip install` 之后一调导出就会 ImportError。现在实现随包走，根目录的 `export.py` 只剩转发。CI 里有一段专门检查 wheel 是否含 `agent_guard/export.py`，防这个回归。
+
+### 四种格式
+
+| 格式 | 用途 | 特点 |
+| --- | --- | --- |
+| `json` | **归档与取证** | 完整快照，含逐条记录与每个数值的可信度标签。**可回灌**（读写闭环） |
+| `csv` | 灌进 Excel / pandas / 财务系统 | 带 UTF-8 BOM，双击不乱码，字段含逗号引号也正确转义 |
+| `md` | 贴进工单 / PR / 邮件 / GitHub issue | 标准 Markdown 表格，含汇总、流水、按收款方归集 |
+| `html` | 给人看的离线归档 | 单文件、无外部请求、可打印存 PDF |
+
+一次全导：
+
+```bash
+python export.py --demo --format all --out-dir out
+# out/mandate-demo-mandate.json / .csv / .md / .html
+```
+
+### 输入接受两种形状
+
+两种在真实工作流里都会出现，所以都支持：
+
+1. `cli demo --json` 的产物：`{"mandate_id": …, "records": […] }`
+2. 裸记录数组：`[{…}, {…}]`
+
+JSON 导出**自带 `records` 字段，可以直接回灌**——所以 `导出 → 导入 → 再导出` 是闭环，测试里就是按这个断言的。
+
+### 接在演示流程上
+
+```bash
+python -m agent_guard.cli export --format all --out-dir out
+```
+
+它跑一遍演示、再调同一个导出工具。实现是**同一个模块**（`agent_guard/export.py`），根目录的 `export.py` 只是一层转发——不存在两份实现漂移的问题。
+
+### 一条硬规矩
+
+导出文件里每个数值都**带着可信度标签**（`measured` / `reported` / `estimated` / `unknown`）。**能耗永远是 `estimated`**——Kiln 的 HTTP API 不提供任何功率数据（已核对服务端源码：无相关字段、无 `/metrics` 端点）。
+
+导出工具**不会**把这些标签抹平成"精确值"。这是刻意的：抹平标签正是这类原型最容易骗人的地方。测试里专门断言了输出中不存在"实测能耗"这类说法。
+
+---
+
+## 网页控制台与下载
+
+### 方式一：导出单文件 HTML（推荐）
+
+```bash
+python -m agent_guard.cli web --out out/console.html
+```
+
+产出一个**自包含的单文件 HTML**：
+
+| 性质 | 说明 |
+| --- | --- |
+| **零外部请求** | 无 CDN、无字体、无图标库、无埋点。CSS/JS/数据全部内联 |
+| **离线可用** | 断网机器、内网机器、U 盘拷过去都能开 |
+| **可直接外发** | 一个文件就能进邮件、工单、附件。不需要对方装 Python 或起服务 |
+| **数据是真的** | 内容从授权链导出，**不是写死的演示假数据** |
+| **页内可下载** | 页面右上角有三个按钮：**下载 JSON**（完整快照）、**下载 CSV**（流水表格）、**打印/存 PDF** |
+
+界面包含：额度进度条、委托条款与指纹、待人工复核队列、支出流水表（可点击行跳到该笔解释）、逐笔解释、哈希链可视化、完整性校验结论、token 与能耗面板。
+
+**审计结论由 Python 侧算定。** 剩余额度、规则命中、完整性判定全部在导出时算好再内联，前端只负责渲染。这一点是刻意的：审计结论不能由浏览器计算，否则改一行 JS 就能把"发现篡改"渲染成"一切正常"。
+
+**页内下载用的是 Blob URL**，不依赖服务端，所以在 `file://` 下直接双击打开也能下载。若某些浏览器限制了本地文件下载，用 `cli demo --json out/chain.json` 从命令行导出同一份数据。
+
+界面变体：
+
+```bash
+python -m agent_guard.cli web --empty            # 空状态界面
+python -m agent_guard.cli web --revoke-after     # 演示「已撤销」状态
+python -m agent_guard.cli web --live             # 接真实 Kiln（默认用回放传输）
+```
+
+### 方式二：本地实时服务
+
+```bash
+python -m agent_guard.cli serve                  # http://127.0.0.1:8787/
+python -m agent_guard.cli serve --host 0.0.0.0   # 局域网可访问（有风险，见下）
+```
+
+| 路径 | 内容 |
+| --- | --- |
+| `/` | 控制台页面（每次刷新都重新渲染） |
+| `/data.json` | 同一份数据的 JSON 快照 |
+| `/health` | `{"status":"ok"}` |
+
+**这个服务是只读的，而且这是刻意的。** 只有 `GET`；`POST` 返回 405 并说明原因：
+
+> 批准与撤销**没有** HTTP 端点。把"按下停止按钮"暴露成一个 URL，等于把撤销权交给任何能发请求的人。
+
+其他安全默认值：只绑 `127.0.0.1`；`Content-Security-Policy` 设 `default-src 'none'` / `connect-src 'none'`，页面无法外发任何数据；禁缓存、禁 iframe 嵌入、禁 MIME 嗅探。
+
+**没有鉴权。** 绑到 `0.0.0.0` 时终端会打印警告。别放到公网。
+
+### 下载什么、给谁
+
+| 场景 | 用哪个 |
+| --- | --- |
+| 给同事/客户看这批支出 | `cli web` 导出的 `.html`，单文件直接发 |
+| 自己随时盯 | `cli serve` 开着的本地页面 |
+| 灌进表格分析 | `export.py --format csv`，或页面里的「下载 CSV」 |
+| 归档取证 | `export.py --format json`（可回灌）+ `cli report --chain` 复校验 |
+| 贴进工单 / PR | `export.py --format md` |
+| 上链锚定 | `chain.head_hash(mandate_id)`，写进 `SpendMandate.anchorReceipt` |
 
 ### 作为库使用
 
@@ -298,6 +448,8 @@ Radxa ROCK 4D（[Radxa 文档](https://docs.radxa.com/en/rock4/rock4d/applicatio
 | `tests/test_engine.py` | 六类规则边界、并发 TOCTOU、台账状态机 | ⚠️ 未执行 |
 | `tests/test_simulator.py` | 示例数据端到端、CLI、JSON 报告 | ⚠️ 未执行 |
 | `tests/test_end_to_end.py` | Kiln 回放 → 提案 → 链 → 引擎 → 结算 → 追溯 → 锚定 | ⚠️ 未执行 |
+| `tests/test_webui.py` | HTML 自包含性、XSS 转义、审计结论由 Python 侧算定、服务只读、JSON 往返 | ⚠️ 未执行 |
+| `tests/test_export.py` | 打包形态（实现随包走、根目录是转发壳）、自包含性（AST 检查）、四格式、CSV BOM、往返一致、标签不被抹平 | ⚠️ 未执行 |
 
 已有替代验证：逐文件人工审阅、跨模块调用签名核对（grep 确认无失效调用）、示例数据 17 笔判定结果与金额累加手工核对。**这些都不能替代真正跑一遍。**
 
@@ -333,14 +485,37 @@ agent_guard/
   wallet.py        钱包界面：批准 / 监视 / 停止
   anchor.py        锚定：NullAnchor（默认，明确不锚定）/ JsonRpcAnchor
   simulator.py     序列模拟器（第一阶段的产物，仍可用）
-  cli.py           命令行入口：demo / report / validate / simulate / kiln-health
+  webui.py         导出单文件 HTML 控制台（自包含、零外部请求）
+  server.py        本地只读服务（GET only，无写端点）
+  demo.py          演示状态构造（cli / web / serve 共用同一份数据）
+  webui.py         导出单文件 HTML 控制台（自包含、零外部请求）
+  server.py        本地只读服务（GET only，无写端点）
+  export.py        导出工具**实现**（自包含，只用标准库，随包安装）
+  py.typed         PEP 561 标记
+  cli.py           命令行入口：web / serve / export / demo / report / validate / simulate / kiln-health
+export.py          根目录转发壳（`python export.py` 用；不进 wheel）
 contracts/
   SpendMandate.sol   链上花费委托（强制级）
 data/
   policy.example.json     示例委托条款
   requests.example.json   示例支出序列（17 笔，覆盖全部规则）
-tests/            4 个测试文件，全部未执行
+docs/
+  PUBLISH.md       发布指南（离线包 / TestPyPI / PyPI、命名理由、检查清单）
+tests/            7 个文件（conftest + 6 个测试模块），全部未执行
 ```
+
+## 打包与发布
+
+发行名 `agent-spend-guard`，导入名 `agent_guard`，**运行期零第三方依赖**。
+
+```bash
+python -m build            # 产出 dist/*.whl 与 dist/*.tar.gz
+python -m twine check dist/*
+```
+
+完整流程（含 Trusted Publishing 配置、TestPyPI 验证、发布前检查清单）见 **[docs/PUBLISH.md](E:\代号3\docs\PUBLISH.md)**。
+
+⚠️ **发布前必须跑测试。** 本仓库的测试**至今一次都没执行过**（本环境 shell 不可用），而 CI 工作流已把 `pytest` 放在构建之前——测试不过就不会出包。
 
 ---
 

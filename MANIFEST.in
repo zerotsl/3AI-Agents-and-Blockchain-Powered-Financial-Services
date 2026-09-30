@@ -1,0 +1,33 @@
+# sdist 打包清单。
+#
+# wheel 的内容由 pyproject.toml 的 [tool.setuptools] 决定（只含 agent_guard 包）。
+# 本文件只管 sdist 里额外带哪些**源码仓库材料** ——
+# 这些不是运行必需，但没有它们，别人拿到 sdist 无法跑测试、无法看合约、无法审计。
+#
+# 注意：根目录的 export.py 是转发壳，真正的实现在 agent_guard/export.py，
+# 随包走，所以这里不列它也不会导致功能缺失。列上是为了让 sdist 拿到完整源码树。
+
+include README.md
+include LICENSE
+include pyproject.toml
+include export.py
+
+# 示例数据（README 的快速开始引用了它们）
+recursive-include data *.json
+
+# 测试（sdist 应当能自证：拿到就能跑 pytest）
+recursive-include tests *.py
+
+# 链上合约（属于交付物，但不参与 Python 打包）
+recursive-include contracts *.sol
+
+# 研究底稿（决策依据，审计时需要）
+include agent-spend-authorization-report.md
+
+# 明确排除
+global-exclude *.py[cod]
+global-exclude __pycache__/*
+global-exclude .DS_Store
+global-exclude *.egg-info
+prune out
+prune .github
